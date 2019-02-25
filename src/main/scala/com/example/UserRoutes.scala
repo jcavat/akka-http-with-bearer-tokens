@@ -20,6 +20,9 @@ import com.example.UserRegistryActor._
 import akka.pattern.ask
 import akka.util.Timeout
 
+import com.typesafe.config.ConfigFactory
+import collection.JavaConversions._
+
 //#user-routes-class
 trait UserRoutes extends JsonSupport {
   //#user-routes-class
@@ -35,8 +38,10 @@ trait UserRoutes extends JsonSupport {
   // Required by the `ask` (?) method below
   implicit lazy val timeout = Timeout(5.seconds) // usually we'd obtain the timeout from the system's configuration
 
+  val tokens: List[String] = ConfigFactory.load().getStringList("tokens").toList
+
   def check(credentials: Credentials): Option[String] = credentials match {
-    case p @ Credentials.Provided(id) if id == "john" && p.verify("p4ssw0rd") => Some(id)
+    case p @ Credentials.Provided(token) if tokens.exists(t => p.verify(t)) => Some(token)
     case _ => None
   }
 
@@ -45,7 +50,8 @@ trait UserRoutes extends JsonSupport {
   //#users-get-delete
   lazy val userRoutes: Route = Route.seal {
     pathPrefix("users") {
-      authenticateBasic(realm = "secure site", check) { userName =>
+      //authenticateBasic(realm = "secure site", check) { userName =>
+      authenticateOAuth2(realm = "secure site", check) { token =>
         concat(
           //#users-get-delete
           pathEnd {
@@ -53,7 +59,7 @@ trait UserRoutes extends JsonSupport {
               get {
                 val users: Future[Users] =
                   (userRegistryActor ? GetUsers).mapTo[Users]
-                log.info(userName + " registered")
+                log.info(token + " registered")
                 complete(users)
               },
               post {
