@@ -1,9 +1,13 @@
+# Akka snippet with OAuth2 Bearer
 
-# Work in progress
+## Summary
 
-## Abstract
+This snippet use the g8 [akka-http-quickstart](https://github.com/akka/akka-http-quickstart-scala.g8) template and use 
+OAuth2 baerer to authenticate.
 
-Http server providing  bearer OAuth2 authorization
+The list of tokens are given in the `application.conf` file in `src/main/resources` folder.
+
+Run the server with `sbt run` and try:
 
 ```
 curl -H "Authorization: Bearer ABCD" http://localhost:8080/users

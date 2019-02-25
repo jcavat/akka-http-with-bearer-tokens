@@ -1,8 +1,6 @@
 lazy val akkaHttpVersion = "10.1.7"
 lazy val akkaVersion    = "2.5.21"
 
-fork in run := true
-
 lazy val root = (project in file(".")).
   settings(
     inThisBuild(List(
