@@ -17,7 +17,7 @@ import akka.http.scaladsl.server.directives.MethodDirectives.post
 import akka.http.scaladsl.server.directives.RouteDirectives.complete
 import akka.http.scaladsl.server.directives.PathDirectives.path
 
-import scala.concurrent.Future
+import scala.concurrent.{ ExecutionContext, Future }
 import com.example.UserRegistryActor._
 import akka.pattern.ask
 import akka.stream.scaladsl.{ Framing, Sink }
@@ -110,19 +110,22 @@ trait UserRoutes extends JsonSupport {
           println("post")
           extractRequestContext { ctx =>
             implicit val materializer = ctx.materializer
+            implicit val ec = ExecutionContext.global
 
-            println("csv")
-            fileUpload("csv") {
-              case (metadata, byteSource) =>
-                println("blabla")
+            fileUploadAll("csv") {
+              case byteSources =>
+                // accumulate the sum of each file
+                println("csv")
+                val sumF: Future[Int] = byteSources.foldLeft(Future.successful(0)) {
+                  case (accF, (metadata, byteSource)) =>
+                    // sum the numbers as they arrive
+                    val intF = byteSource.via(Framing.delimiter(ByteString("\n"), 1024))
+                      .mapConcat(_.utf8String.split(",").toVector)
+                      .map(_.toInt)
+                      .runFold(0) { (acc, n) => acc + n }
 
-                val sumF: Future[Int] =
-                  // sum the numbers as they arrive so that we can
-                  // accept any size of file
-                  byteSource.via(Framing.delimiter(ByteString("\n"), 1024))
-                    .mapConcat(_.utf8String.split(",").toVector)
-                    .map(_.toInt)
-                    .runFold(0) { (acc, n) => acc + n }
+                    accF.flatMap(acc => intF.map(acc + _))
+                }
 
                 onSuccess(sumF) { sum => complete(s"Sum: $sum") }
             }
