@@ -1,5 +1,7 @@
 package com.example
 
+import java.io.File
+
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.event.Logging
 
@@ -18,9 +20,10 @@ import akka.http.scaladsl.server.directives.PathDirectives.path
 import scala.concurrent.Future
 import com.example.UserRegistryActor._
 import akka.pattern.ask
-import akka.util.Timeout
-
+import akka.stream.scaladsl.{ Framing, Sink }
+import akka.util.{ ByteString, Timeout }
 import com.typesafe.config.ConfigFactory
+
 import collection.JavaConversions._
 
 //#user-routes-class
@@ -49,57 +52,83 @@ trait UserRoutes extends JsonSupport {
   //#users-get-post
   //#users-get-delete
   lazy val userRoutes: Route = Route.seal {
-    pathPrefix("users") {
-      //authenticateBasic(realm = "secure site", check) { userName =>
-      authenticateOAuth2(realm = "secure site", check) { token =>
-        concat(
-          //#users-get-delete
-          pathEnd {
-            concat(
-              get {
-                val users: Future[Users] =
-                  (userRegistryActor ? GetUsers).mapTo[Users]
-                log.info(token + " registered")
-                complete(users)
-              },
-              post {
-                entity(as[User]) { user =>
-                  val userCreated: Future[ActionPerformed] =
-                    (userRegistryActor ? CreateUser(user)).mapTo[ActionPerformed]
-                  onSuccess(userCreated) { performed =>
-                    log.info("Created user [{}]: {}", user.name, performed.description)
-                    complete((StatusCodes.Created, performed))
+    concat(
+      pathPrefix("users") {
+        //authenticateBasic(realm = "secure site", check) { userName =>
+        authenticateOAuth2(realm = "secure site", check) { token =>
+          concat(
+            //#users-get-delete
+            pathEnd {
+              concat(
+                get {
+                  val users: Future[Users] =
+                    (userRegistryActor ? GetUsers).mapTo[Users]
+                  log.info(token + " registered")
+                  complete(users)
+                },
+                post {
+                  entity(as[User]) { user =>
+                    val userCreated: Future[ActionPerformed] =
+                      (userRegistryActor ? CreateUser(user)).mapTo[ActionPerformed]
+                    onSuccess(userCreated) { performed =>
+                      log.info("Created user [{}]: {}", user.name, performed.description)
+                      complete((StatusCodes.Created, performed))
+                    }
                   }
-                }
-              })
-          },
-          //#users-get-post
-          //#users-get-delete
-          path(Segment) { name =>
-            concat(
-              get {
-                //#retrieve-user-info
-                val maybeUser: Future[Option[User]] =
-                  (userRegistryActor ? GetUser(name)).mapTo[Option[User]]
-                rejectEmptyResponse {
-                  complete(maybeUser)
-                }
-                //#retrieve-user-info
-              },
-              delete {
-                //#users-delete-logic
-                val userDeleted: Future[ActionPerformed] =
-                  (userRegistryActor ? DeleteUser(name)).mapTo[ActionPerformed]
-                onSuccess(userDeleted) { performed =>
-                  log.info("Deleted user [{}]: {}", name, performed.description)
-                  complete((StatusCodes.OK, performed))
-                }
-                //#users-delete-logic
-              })
-          })
-      }
-      //#users-get-delete
-    }
+                })
+            },
+            //#users-get-post
+            //#users-get-delete
+            path(Segment) { name =>
+              concat(
+                get {
+                  //#retrieve-user-info
+                  val maybeUser: Future[Option[User]] =
+                    (userRegistryActor ? GetUser(name)).mapTo[Option[User]]
+                  rejectEmptyResponse {
+                    complete(maybeUser)
+                  }
+                  //#retrieve-user-info
+                },
+                delete {
+                  //#users-delete-logic
+                  val userDeleted: Future[ActionPerformed] =
+                    (userRegistryActor ? DeleteUser(name)).mapTo[ActionPerformed]
+                  onSuccess(userDeleted) { performed =>
+                    log.info("Deleted user [{}]: {}", name, performed.description)
+                    complete((StatusCodes.OK, performed))
+                  }
+                  //#users-delete-logic
+                })
+            })
+        }
+        //#users-get-delete
+      },
+      path("upload") {
+        println("upload")
+        post {
+          println("post")
+          extractRequestContext { ctx =>
+            implicit val materializer = ctx.materializer
+
+            println("csv")
+            fileUpload("csv") {
+              case (metadata, byteSource) =>
+                println("blabla")
+
+                val sumF: Future[Int] =
+                  // sum the numbers as they arrive so that we can
+                  // accept any size of file
+                  byteSource.via(Framing.delimiter(ByteString("\n"), 1024))
+                    .mapConcat(_.utf8String.split(",").toVector)
+                    .map(_.toInt)
+                    .runFold(0) { (acc, n) => acc + n }
+
+                onSuccess(sumF) { sum => complete(s"Sum: $sum") }
+            }
+          }
+        }
+      })
     //#all-routes
   }
 }
