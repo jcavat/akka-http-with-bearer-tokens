@@ -13,3 +13,8 @@ Run the server with `sbt run` and try:
 curl -H "Authorization: Bearer ABCD" http://localhost:8080/users
 ```
 
+Post a csv file :
+
+```
+curl -v -F csv=@read.csv http://localhost:8080/upload
+```
